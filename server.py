@@ -294,7 +294,7 @@ TOOLS: list[Tool] = [
     # ── Repos ──
     Tool(
         name="github_create_repo",
-        description="Create a new GitHub repository for the authenticated user.",
+        description="[WRITE] Create a new GitHub repository for the authenticated user.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -309,7 +309,7 @@ TOOLS: list[Tool] = [
     Tool(
         name="github_upsert_file",
         description=(
-            "Create or update a single file in a repository. "
+            "[WRITE] Create or update a single file in a repository. "
             "Content is plain text — base64 encoding is handled automatically. "
             "For updates, the current file SHA is fetched automatically if not supplied."
         ),
@@ -422,7 +422,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="github_create_issue",
-        description="Create a new issue in a repository.",
+        description="[WRITE] Create a new issue in a repository.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -437,7 +437,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="github_update_issue",
-        description="Update an issue: change title, body, or state (open/closed).",
+        description="[WRITE] Update an issue: change title, body, or state (open/closed).",
         inputSchema={
             "type": "object",
             "properties": {
@@ -453,7 +453,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="github_add_comment",
-        description="Add a comment to an issue or pull request.",
+        description="[WRITE] Add a comment to an issue or pull request.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -495,7 +495,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="github_create_pr",
-        description="Create a pull request.",
+        description="[WRITE] Create a pull request.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -605,6 +605,16 @@ async def _dispatch(name: str, args: dict) -> str:
     def sync(fn, *a, **kw):
         return loop.run_in_executor(None, lambda: fn(*a, **kw))
 
+    # Clean up any expired auth_pending.json on every non-authorize call
+    if name != "github_authorize" and PENDING_FILE.exists():
+        try:
+            with open(PENDING_FILE) as f:
+                _p = json.load(f)
+            if time.time() > _p.get("expires_at", 0):
+                PENDING_FILE.unlink(missing_ok=True)
+        except Exception:
+            PENDING_FILE.unlink(missing_ok=True)
+
     # ── Auth ──────────────────────────────────────────────────────────────
     if name == "github_authorize":
         # Already have a valid token?
@@ -651,6 +661,7 @@ async def _dispatch(name: str, args: dict) -> str:
                     # Update interval in case slow_down mutated it
                     with open(PENDING_FILE, "w") as f:
                         json.dump(pending, f)
+                    PENDING_FILE.chmod(0o600)
                     return (
                         f"⏳ Still waiting — GitHub hasn't seen your authorization yet.\n\n"
                         f"Make sure you've entered code **`{pending['user_code']}`** at "
@@ -669,6 +680,7 @@ async def _dispatch(name: str, args: dict) -> str:
         pending = await loop.run_in_executor(None, _start)
         with open(PENDING_FILE, "w") as f:
             json.dump(pending, f)
+        PENDING_FILE.chmod(0o600)  # owner-read/write only
 
         return (
             f"🔐 **GitHub Device Authorization**\n\n"
