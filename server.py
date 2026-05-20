@@ -39,7 +39,7 @@ PENDING_FILE = BASE / "auth_pending.json"  # transient state between auth Phase 
 GITHUB_API       = "https://api.github.com"
 DEVICE_CODE_URL  = "https://github.com/login/device/code"
 OAUTH_TOKEN_URL  = "https://github.com/login/oauth/access_token"
-SCOPES = "repo read:org notifications user gist"   # space-delimited per GitHub docs
+SCOPES = "repo read:org notifications user"   # space-delimited per GitHub docs
 
 # ── Keychain ────────────────────────────────────────────────────────────────
 KEYRING_SERVICE  = "github-mcp-connector"
@@ -294,7 +294,7 @@ TOOLS: list[Tool] = [
     # ── Repos ──
     Tool(
         name="github_create_repo",
-        description="[WRITE] Create a new GitHub repository for the authenticated user.",
+        description="Create a new GitHub repository for the authenticated user.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -309,7 +309,7 @@ TOOLS: list[Tool] = [
     Tool(
         name="github_upsert_file",
         description=(
-            "[WRITE] Create or update a single file in a repository. "
+            "Create or update a single file in a repository. "
             "Content is plain text — base64 encoding is handled automatically. "
             "For updates, the current file SHA is fetched automatically if not supplied."
         ),
@@ -422,7 +422,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="github_create_issue",
-        description="[WRITE] Create a new issue in a repository.",
+        description="Create a new issue in a repository.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -437,7 +437,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="github_update_issue",
-        description="[WRITE] Update an issue: change title, body, or state (open/closed).",
+        description="Update an issue: change title, body, or state (open/closed).",
         inputSchema={
             "type": "object",
             "properties": {
@@ -453,7 +453,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="github_add_comment",
-        description="[WRITE] Add a comment to an issue or pull request.",
+        description="Add a comment to an issue or pull request.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -495,7 +495,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="github_create_pr",
-        description="[WRITE] Create a pull request.",
+        description="Create a pull request.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -661,7 +661,6 @@ async def _dispatch(name: str, args: dict) -> str:
                     # Update interval in case slow_down mutated it
                     with open(PENDING_FILE, "w") as f:
                         json.dump(pending, f)
-                    PENDING_FILE.chmod(0o600)
                     return (
                         f"⏳ Still waiting — GitHub hasn't seen your authorization yet.\n\n"
                         f"Make sure you've entered code **`{pending['user_code']}`** at "
