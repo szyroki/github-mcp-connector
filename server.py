@@ -5,7 +5,7 @@ Tools exposed:
   Auth:    github_authorize · github_status · github_logout
   User:    github_whoami
   Repos:   github_create_repo · github_list_repos · github_get_repo · github_search_repos
-           github_get_file · github_list_directory · github_upsert_file
+           github_get_file · github_list_directory · github_upsert_file · github_push_files
   Issues:  github_list_issues · github_get_issue · github_create_issue
            github_update_issue · github_add_comment
   PRs:     github_list_prs · github_get_pr · github_create_pr
@@ -325,6 +325,36 @@ TOOLS: list[Tool] = [
                 "sha":     {"type": "string", "description": "Blob SHA of the file being replaced (auto-fetched if omitted)"},
             },
             "required": ["owner", "repo", "path", "content", "message"],
+        },
+    ),
+    Tool(
+        name="github_push_files",
+        description=(
+            "Commit multiple files to a repository in a single commit using the Git Data API. "
+            "All files land atomically in one commit — use this instead of calling "
+            "github_upsert_file repeatedly when uploading or updating several files at once."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "owner":   {"type": "string"},
+                "repo":    {"type": "string"},
+                "message": {"type": "string", "description": "Commit message"},
+                "files": {
+                    "type": "array",
+                    "description": "Files to include in the commit",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "path":    {"type": "string", "description": "File path in the repo, e.g. 'src/main.py'"},
+                            "content": {"type": "string", "description": "Plain-text file content"},
+                        },
+                        "required": ["path", "content"],
+                    },
+                },
+                "branch": {"type": "string", "description": "Target branch (default: repo default branch)"},
+            },
+            "required": ["owner", "repo", "message", "files"],
         },
     ),
     Tool(
@@ -777,6 +807,69 @@ async def _dispatch(name: str, args: dict) -> str:
         action = "Updated" if sha else "Created"
         cf = result.get("content", {})
         return f"✅ {action} `{cf.get('path', path)}`  ({cf.get('size', '?')} bytes)\n  {cf.get('html_url', '')}"
+
+    if name == "github_push_files":
+        token = require_token()
+        owner, repo = args["owner"], args["repo"]
+        files   = args["files"]
+        message = args["message"]
+        branch  = args.get("branch")
+
+        if not files:
+            return "❌ No files provided."
+
+        # 1. Resolve default branch if not supplied
+        if not branch:
+            repo_info = await sync(gh_get, f"/repos/{owner}/{repo}", token)
+            branch = repo_info["default_branch"]
+
+        # 2. Get HEAD commit SHA for the branch
+        ref = await sync(gh_get, f"/repos/{owner}/{repo}/git/ref/heads/{branch}", token)
+        head_sha = ref["object"]["sha"]
+
+        # 3. Get base tree SHA from the HEAD commit
+        head_commit = await sync(gh_get, f"/repos/{owner}/{repo}/git/commits/{head_sha}", token)
+        base_tree_sha = head_commit["tree"]["sha"]
+
+        # 4. Create a blob for each file
+        tree_entries = []
+        for f in files:
+            blob = await sync(gh_post, f"/repos/{owner}/{repo}/git/blobs", token, {
+                "content":  f["content"],
+                "encoding": "utf-8",
+            })
+            tree_entries.append({
+                "path": f["path"],
+                "mode": "100644",   # regular file
+                "type": "blob",
+                "sha":  blob["sha"],
+            })
+
+        # 5. Create new tree on top of the base tree
+        new_tree = await sync(gh_post, f"/repos/{owner}/{repo}/git/trees", token, {
+            "base_tree": base_tree_sha,
+            "tree":      tree_entries,
+        })
+
+        # 6. Create the commit
+        new_commit = await sync(gh_post, f"/repos/{owner}/{repo}/git/commits", token, {
+            "message": message,
+            "tree":    new_tree["sha"],
+            "parents": [head_sha],
+        })
+
+        # 7. Fast-forward the branch ref
+        await sync(gh_patch, f"/repos/{owner}/{repo}/git/refs/heads/{branch}", token, {
+            "sha": new_commit["sha"],
+        })
+
+        short_sha = new_commit["sha"][:7]
+        paths = "\n".join(f"  • `{f['path']}`" for f in files)
+        return (
+            f"✅ Committed {len(files)} file(s) to `{branch}` — `{short_sha}`\n\n"
+            f"{paths}\n\n"
+            f"  https://github.com/{owner}/{repo}/commit/{new_commit['sha']}"
+        )
 
     if name == "github_list_repos":
         token = require_token()
