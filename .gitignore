@@ -1,0 +1,7 @@
+venv/
+config.json
+tokens.json          # legacy — migrated to Keychain on first use
+auth_pending.json    # transient auth state, auto-deleted after completion
+__pycache__/
+*.pyc
+.DS_Store
