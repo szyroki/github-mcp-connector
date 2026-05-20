@@ -31,9 +31,8 @@ Then **restart Claude** and call `github_authorize` in any chat — your browser
 | `read:org` | Read org membership and teams |
 | `notifications` | Read and mark notifications |
 | `user` | Read your profile |
-| `gist` | Read and write gists |
 
-If you only need read access, edit `SCOPES` in `server.py` to `"public_repo read:org notifications user"` before authorizing.
+If you only need public-repo read access (no private repos), edit `SCOPES` in `server.py` to `"public_repo read:org notifications user"` before authorizing. Note: `public_repo` does not grant access to private repositories.
 
 ### Write tools
 
@@ -48,7 +47,7 @@ The connector includes tools that **make real changes on GitHub**:
 | `github_add_comment` | Posts a comment |
 | `github_create_pr` | Opens a pull request |
 
-Claude will always ask for your approval before calling any tool. Write tools are no different — you will see the call and its arguments before it executes. That said, be deliberate when approving write operations.
+Claude Desktop will prompt you for approval before each tool call — review the arguments carefully before allowing write operations.
 
 ---
 
@@ -124,7 +123,7 @@ Restart Claude, then call `github_authorize`.
 | `github_get_commit` | Commit details + files |
 | `github_list_notifications` | Unread notifications |
 
-### Write (makes real changes — Claude will ask for approval)
+### Write (makes real changes — review before approving)
 
 | Tool | Description |
 |------|-------------|
