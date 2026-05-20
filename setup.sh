@@ -74,6 +74,10 @@ if [ -f "$DESKTOP_CONFIG" ]; then
         echo "✅ Claude desktop config already has the GitHub connector."
     else
         echo "→ Adding GitHub connector to Claude desktop config…"
+        # Back up the config before touching it
+        BACKUP="${DESKTOP_CONFIG}.backup-$(date +%Y%m%d-%H%M%S)"
+        cp "$DESKTOP_CONFIG" "$BACKUP"
+        echo "  Backup saved: $(basename "$BACKUP")"
         # Use Python to safely merge JSON
         "$VENV_PYTHON" - "$DESKTOP_CONFIG" "$VENV_PYTHON" "$SERVER_PY" <<'PYEOF'
 import json, sys
