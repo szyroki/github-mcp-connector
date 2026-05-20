@@ -13,9 +13,42 @@ The setup script will:
 1. Create a Python venv and install dependencies
 2. Walk you through creating a GitHub OAuth App (takes ~2 minutes)
 3. Write `config.json` with your credentials
-4. Add the connector to `claude_desktop_config.json`
+4. Add the connector to `claude_desktop_config.json` (backs up the original first)
 
 Then **restart Claude** and call `github_authorize` in any chat — your browser opens, you enter the shown code on GitHub, click **Authorize**, and call `github_authorize` once more to complete. The token is stored in macOS Keychain and reused automatically forever.
+
+---
+
+## ⚠️ Access & permissions
+
+**This connector has broad access and includes write tools. Read this before installing.**
+
+### OAuth scopes requested
+
+| Scope | What it allows |
+|---|---|
+| `repo` | Full access to public **and private** repositories — read and write |
+| `read:org` | Read org membership and teams |
+| `notifications` | Read and mark notifications |
+| `user` | Read your profile |
+| `gist` | Read and write gists |
+
+If you only need read access, edit `SCOPES` in `server.py` to `"public_repo read:org notifications user"` before authorizing.
+
+### Write tools
+
+The connector includes tools that **make real changes on GitHub**:
+
+| Tool | What it does |
+|---|---|
+| `github_create_repo` | Creates a new repository |
+| `github_upsert_file` | Creates or overwrites a file (makes a commit) |
+| `github_create_issue` | Opens a new issue |
+| `github_update_issue` | Edits or closes an issue |
+| `github_add_comment` | Posts a comment |
+| `github_create_pr` | Opens a pull request |
+
+Claude will always ask for your approval before calling any tool. Write tools are no different — you will see the call and its arguments before it executes. That said, be deliberate when approving write operations.
 
 ---
 
@@ -42,7 +75,7 @@ Then **restart Claude** and call `github_authorize` in any chat — your browser
 }
 ```
 
-> **Security:** `config.json` is in `.gitignore`. The token never touches the filesystem — it lives in macOS Keychain.
+> `config.json` is in `.gitignore`. The OAuth token never touches the filesystem — it lives in macOS Keychain.
 
 ### Step 3 — Python venv
 
@@ -68,14 +101,14 @@ Restart Claude, then call `github_authorize`.
 
 ## Available Tools (24)
 
+### Read-only
+
 | Tool | Description |
 |------|-------------|
 | `github_authorize` | Device Flow OAuth — two-phase, browser + code |
 | `github_status` | Show currently logged-in user |
 | `github_logout` | Remove stored token |
 | `github_whoami` | Get your (or any user's) profile |
-| `github_create_repo` | Create a new repository |
-| `github_upsert_file` | Create or update a file in a repo |
 | `github_list_repos` | List your repos |
 | `github_get_repo` | Repo details |
 | `github_search_repos` | Search GitHub repos |
@@ -83,23 +116,26 @@ Restart Claude, then call `github_authorize`.
 | `github_list_directory` | Browse a repo directory |
 | `github_list_issues` | List issues |
 | `github_get_issue` | Issue + all comments |
-| `github_create_issue` | Create an issue |
-| `github_update_issue` | Edit / close an issue |
-| `github_add_comment` | Comment on issue or PR |
 | `github_list_prs` | List pull requests |
 | `github_get_pr` | PR details + changed files |
-| `github_create_pr` | Open a pull request |
 | `github_search_code` | Code search across GitHub |
 | `github_search_issues` | Issue/PR search |
 | `github_list_commits` | Commit history |
 | `github_get_commit` | Commit details + files |
 | `github_list_notifications` | Unread notifications |
 
-## OAuth Scopes
+### Write (makes real changes — Claude will ask for approval)
 
-The connector requests: `repo read:org notifications user gist`
+| Tool | Description |
+|------|-------------|
+| `github_create_repo` | Create a new repository |
+| `github_upsert_file` | Create or update a file (commits to repo) |
+| `github_create_issue` | Open a new issue |
+| `github_update_issue` | Edit or close an issue |
+| `github_add_comment` | Post a comment on an issue or PR |
+| `github_create_pr` | Open a pull request |
 
-Full access to your repos (public + private), org membership, notifications, profile, and gists. Narrow this in `server.py` → `SCOPES` if needed.
+---
 
 ## Re-authorizing
 
@@ -117,6 +153,12 @@ github_authorize
 
 No callback server, no open port, no `client_secret` to protect.
 
-## Token Storage
+## Token & local file security
 
-The access token is stored in the **macOS Keychain** (`keyring.backends.macOS`) under the item `github-mcp-connector / oauth_token`. It never touches the filesystem. macOS may prompt "python3 wants to use your keychain" on first use — click **Always Allow** to avoid future prompts.
+| File | Contains | Permissions | Notes |
+|---|---|---|---|
+| `config.json` | OAuth App client_id | `0600` | In `.gitignore` |
+| macOS Keychain | OAuth access token | System-managed | Never written to disk |
+| `auth_pending.json` | Temporary device code (not the token) | `0600` | Auto-deleted on completion or expiry |
+
+macOS may prompt "python3 wants to use your keychain" on first use — click **Always Allow**.
