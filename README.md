@@ -98,7 +98,7 @@ Restart Claude, then call `github_authorize`.
 
 ---
 
-## Available Tools (24)
+## Available Tools (25)
 
 ### Read-only
 
@@ -129,6 +129,7 @@ Restart Claude, then call `github_authorize`.
 |------|-------------|
 | `github_create_repo` | Create a new repository |
 | `github_upsert_file` | Create or update a file (commits to repo) |
+| `github_push_files` | Commit multiple files in a single atomic commit (Git Data API) |
 | `github_create_issue` | Open a new issue |
 | `github_update_issue` | Edit or close an issue |
 | `github_add_comment` | Post a comment on an issue or PR |
