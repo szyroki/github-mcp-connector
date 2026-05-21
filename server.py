@@ -331,7 +331,7 @@ TOOLS: list[Tool] = [
         name="github_push_files",
         description=(
             "Commit multiple files to a repository in a single commit using the Git Data API. "
-            "All files land atomically in one commit — use this instead of calling "
+            "All files land in one commit — use this instead of calling "
             "github_upsert_file repeatedly when uploading or updating several files at once."
         ),
         inputSchema={
@@ -348,6 +348,7 @@ TOOLS: list[Tool] = [
                         "properties": {
                             "path":    {"type": "string", "description": "File path in the repo, e.g. 'src/main.py'"},
                             "content": {"type": "string", "description": "Plain-text file content"},
+                            "mode":    {"type": "string", "description": "Git file mode (e.g. '100755' for executable). Omit to preserve the existing mode, or '100644' for new files."},
                         },
                         "required": ["path", "content"],
                     },
@@ -818,6 +819,21 @@ async def _dispatch(name: str, args: dict) -> str:
         if not files:
             return "❌ No files provided."
 
+        # Validate all paths up-front before touching the API
+        for f in files:
+            p = f.get("path", "")
+            if not p:
+                return "❌ File path must not be empty."
+            if p.startswith("/"):
+                return f"❌ File path must not start with '/': {p!r}"
+            if "\\" in p:
+                return f"❌ File path must not contain backslashes: {p!r}"
+            for part in p.split("/"):
+                if part in (".", ".."):
+                    return f"❌ File path must not contain '.' or '..' components: {p!r}"
+                if not part:
+                    return f"❌ File path must not contain empty components (double slash): {p!r}"
+
         # 1. Resolve default branch if not supplied
         if not branch:
             repo_info = await sync(gh_get, f"/repos/{owner}/{repo}", token)
@@ -831,6 +847,17 @@ async def _dispatch(name: str, args: dict) -> str:
         head_commit = await sync(gh_get, f"/repos/{owner}/{repo}/git/commits/{head_sha}", token)
         base_tree_sha = head_commit["tree"]["sha"]
 
+        # 3b. Fetch the existing tree to preserve file modes (e.g. executable bits)
+        existing_tree_data = await sync(
+            gh_get, f"/repos/{owner}/{repo}/git/trees/{base_tree_sha}", token,
+            {"recursive": "1"},
+        )
+        existing_modes = {
+            entry["path"]: entry["mode"]
+            for entry in existing_tree_data.get("tree", [])
+            if entry["type"] == "blob"
+        }
+
         # 4. Create a blob for each file
         tree_entries = []
         for f in files:
@@ -838,9 +865,11 @@ async def _dispatch(name: str, args: dict) -> str:
                 "content":  f["content"],
                 "encoding": "utf-8",
             })
+            # Explicit mode wins; otherwise preserve existing mode; new files default to 100644
+            mode = f.get("mode") or existing_modes.get(f["path"], "100644")
             tree_entries.append({
                 "path": f["path"],
-                "mode": "100644",   # regular file
+                "mode": mode,
                 "type": "blob",
                 "sha":  blob["sha"],
             })
@@ -858,9 +887,10 @@ async def _dispatch(name: str, args: dict) -> str:
             "parents": [head_sha],
         })
 
-        # 7. Fast-forward the branch ref
+        # 7. Fast-forward the branch ref (non-force — will fail if branch moved since step 2)
         await sync(gh_patch, f"/repos/{owner}/{repo}/git/refs/heads/{branch}", token, {
-            "sha": new_commit["sha"],
+            "sha":   new_commit["sha"],
+            "force": False,
         })
 
         short_sha = new_commit["sha"][:7]
